@@ -1,0 +1,332 @@
+#!/usr/bin/env sage
+# coding: utf-8
+
+class Zuc:
+    # c = a + b (mod 2^31 – 1)
+    def __add_mod__(self, a, b):
+        c = (a + b) & 0xFFFFFFFF
+        return (c & 0x7FFFFFFF) + (c >> 31)
+        
+    def __mul_by_sqr__(self, x, k):   
+        return ((x << k) | (x >> (31 - k))) & 0x7FFFFFFF
+
+    def __word31__(self, a, b, c):
+        return ((a << 23) | (b << 8) | c) & 0x7FFFFFFF
+
+    def __word32__(self, a, b, c, d):
+        return ((a << 24) | (b << 16) | (c << 8) | d) & 0xFFFFFFFF
+   
+    def __rotate__(self, a, k):
+        return ((a << k) | (a >> (32 - k))) & 0xFFFFFFFF
+
+    def __init__(self, k, iv):
+        self.lfsr = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+        self.br = [0,0,0,0]
+        self.reg1 = 0
+        self.reg2 = 0
+        
+        self.s0 = [
+            0x3e,0x72,0x5b,0x47,0xca,0xe0,0x00,0x33,0x04,0xd1,0x54,0x98,0x09,0xb9,0x6d,0xcb,
+            0x7b,0x1b,0xf9,0x32,0xaf,0x9d,0x6a,0xa5,0xb8,0x2d,0xfc,0x1d,0x08,0x53,0x03,0x90,
+            0x4d,0x4e,0x84,0x99,0xe4,0xce,0xd9,0x91,0xdd,0xb6,0x85,0x48,0x8b,0x29,0x6e,0xac,
+            0xcd,0xc1,0xf8,0x1e,0x73,0x43,0x69,0xc6,0xb5,0xbd,0xfd,0x39,0x63,0x20,0xd4,0x38,
+            0x76,0x7d,0xb2,0xa7,0xcf,0xed,0x57,0xc5,0xf3,0x2c,0xbb,0x14,0x21,0x06,0x55,0x9b,
+            0xe3,0xef,0x5e,0x31,0x4f,0x7f,0x5a,0xa4,0x0d,0x82,0x51,0x49,0x5f,0xba,0x58,0x1c,
+            0x4a,0x16,0xd5,0x17,0xa8,0x92,0x24,0x1f,0x8c,0xff,0xd8,0xae,0x2e,0x01,0xd3,0xad,
+            0x3b,0x4b,0xda,0x46,0xeb,0xc9,0xde,0x9a,0x8f,0x87,0xd7,0x3a,0x80,0x6f,0x2f,0xc8,
+            0xb1,0xb4,0x37,0xf7,0x0a,0x22,0x13,0x28,0x7c,0xcc,0x3c,0x89,0xc7,0xc3,0x96,0x56,
+            0x07,0xbf,0x7e,0xf0,0x0b,0x2b,0x97,0x52,0x35,0x41,0x79,0x61,0xa6,0x4c,0x10,0xfe,
+            0xbc,0x26,0x95,0x88,0x8a,0xb0,0xa3,0xfb,0xc0,0x18,0x94,0xf2,0xe1,0xe5,0xe9,0x5d,
+            0xd0,0xdc,0x11,0x66,0x64,0x5c,0xec,0x59,0x42,0x75,0x12,0xf5,0x74,0x9c,0xaa,0x23,
+            0x0e,0x86,0xab,0xbe,0x2a,0x02,0xe7,0x67,0xe6,0x44,0xa2,0x6c,0xc2,0x93,0x9f,0xf1,
+            0xf6,0xfa,0x36,0xd2,0x50,0x68,0x9e,0x62,0x71,0x15,0x3d,0xd6,0x40,0xc4,0xe2,0x0f,
+            0x8e,0x83,0x77,0x6b,0x25,0x05,0x3f,0x0c,0x30,0xea,0x70,0xb7,0xa1,0xe8,0xa9,0x65,
+            0x8d,0x27,0x1a,0xdb,0x81,0xb3,0xa0,0xf4,0x45,0x7a,0x19,0xdf,0xee,0x78,0x34,0x60
+        ] 
+
+        self.s1 = [
+            0x55,0xc2,0x63,0x71,0x3b,0xc8,0x47,0x86,0x9f,0x3c,0xda,0x5b,0x29,0xaa,0xfd,0x77,
+            0x8c,0xc5,0x94,0x0c,0xa6,0x1a,0x13,0x00,0xe3,0xa8,0x16,0x72,0x40,0xf9,0xf8,0x42,
+            0x44,0x26,0x68,0x96,0x81,0xd9,0x45,0x3e,0x10,0x76,0xc6,0xa7,0x8b,0x39,0x43,0xe1,
+            0x3a,0xb5,0x56,0x2a,0xc0,0x6d,0xb3,0x05,0x22,0x66,0xbf,0xdc,0x0b,0xfa,0x62,0x48,
+            0xdd,0x20,0x11,0x06,0x36,0xc9,0xc1,0xcf,0xf6,0x27,0x52,0xbb,0x69,0xf5,0xd4,0x87,
+            0x7f,0x84,0x4c,0xd2,0x9c,0x57,0xa4,0xbc,0x4f,0x9a,0xdf,0xfe,0xd6,0x8d,0x7a,0xeb,
+            0x2b,0x53,0xd8,0x5c,0xa1,0x14,0x17,0xfb,0x23,0xd5,0x7d,0x30,0x67,0x73,0x08,0x09,
+            0xee,0xb7,0x70,0x3f,0x61,0xb2,0x19,0x8e,0x4e,0xe5,0x4b,0x93,0x8f,0x5d,0xdb,0xa9,
+            0xad,0xf1,0xae,0x2e,0xcb,0x0d,0xfc,0xf4,0x2d,0x46,0x6e,0x1d,0x97,0xe8,0xd1,0xe9,
+            0x4d,0x37,0xa5,0x75,0x5e,0x83,0x9e,0xab,0x82,0x9d,0xb9,0x1c,0xe0,0xcd,0x49,0x89,
+            0x01,0xb6,0xbd,0x58,0x24,0xa2,0x5f,0x38,0x78,0x99,0x15,0x90,0x50,0xb8,0x95,0xe4,
+            0xd0,0x91,0xc7,0xce,0xed,0x0f,0xb4,0x6f,0xa0,0xcc,0xf0,0x02,0x4a,0x79,0xc3,0xde,
+            0xa3,0xef,0xea,0x51,0xe6,0x6b,0x18,0xec,0x1b,0x2c,0x80,0xf7,0x74,0xe7,0xff,0x21,
+            0x5a,0x6a,0x54,0x1e,0x41,0x31,0x92,0x35,0xc4,0x33,0x07,0x0a,0xba,0x7e,0x0e,0x34,
+            0x88,0xb1,0x98,0x7c,0xf3,0x3d,0x60,0x6c,0x7b,0xca,0xd3,0x1f,0x32,0x65,0x04,0x28,
+            0x64,0xbe,0x85,0x9b,0x2f,0x59,0x8a,0xd7,0xb0,0x25,0xac,0xaf,0x12,0x03,0xe2,0xf2
+        ]
+
+        # state initialization constants
+        self.init_const = [
+            0x44D7, 0x26BC, 0x626B, 0x135E, 0x5789, 0x35E2, 0x7135, 0x09AF,
+            0x4D78, 0x2F13, 0x6BC4, 0x1AF1, 0x5E26, 0x3C4D, 0x789A, 0x47AC
+        ]
+        
+        # expand key
+        self.lfsr[0]  = self.__word31__(k[0],  self.init_const[0],  iv[0]);
+        self.lfsr[1]  = self.__word31__(k[1],  self.init_const[1],  iv[1]);
+        self.lfsr[2]  = self.__word31__(k[2],  self.init_const[2],  iv[2]);
+        self.lfsr[3]  = self.__word31__(k[3],  self.init_const[3],  iv[3]);
+        self.lfsr[4]  = self.__word31__(k[4],  self.init_const[4],  iv[4]);
+        self.lfsr[5]  = self.__word31__(k[5],  self.init_const[5],  iv[5]);
+        self.lfsr[6]  = self.__word31__(k[6],  self.init_const[6],  iv[6]);
+        self.lfsr[7]  = self.__word31__(k[7],  self.init_const[7],  iv[7]);
+        self.lfsr[8]  = self.__word31__(k[8],  self.init_const[8],  iv[8]);
+        self.lfsr[9]  = self.__word31__(k[9],  self.init_const[9],  iv[9]);
+        self.lfsr[10] = self.__word31__(k[10], self.init_const[10], iv[10]);
+        self.lfsr[11] = self.__word31__(k[11], self.init_const[11], iv[11]);
+        self.lfsr[12] = self.__word31__(k[12], self.init_const[12], iv[12]);
+        self.lfsr[13] = self.__word31__(k[13], self.init_const[13], iv[13]);
+        self.lfsr[14] = self.__word31__(k[14], self.init_const[14], iv[14]);
+        self.lfsr[15] = self.__word31__(k[15], self.init_const[15], iv[15]);
+        self.reg1 = 0;
+        self.reg2 = 0;
+        
+        # define debug veriables
+        self.fsm_in1 = 0
+        self.fsm_in2 = 0
+        self.fsm_add = 0
+        self.fsm_xor = 0
+        self.fsm_xch1 = 0
+        self.fsm_xch2 = 0
+        self.fsm_l1 = 0
+        self.fsm_l2 = 0
+        self.fsm_r1 = 0
+        self.fsm_r2 = 0
+        self.fsm_out_x0 = 0
+        self.fsm_out = 0
+        self.outword = 0
+    # end of __init__
+
+    def tick_init(self, u):
+        f = self.lfsr[0]
+        v = self.__mul_by_sqr__(self.lfsr[0], 8)
+        f = self.__add_mod__(f, v)
+
+        v = self.__mul_by_sqr__(self.lfsr[4], 20)
+        f = self.__add_mod__(f, v)
+        
+        v = self.__mul_by_sqr__(self.lfsr[10], 21)
+        f = self.__add_mod__(f, v)
+
+        v = self.__mul_by_sqr__(self.lfsr[13], 17)
+        f = self.__add_mod__(f, v)
+
+        v = self.__mul_by_sqr__(self.lfsr[15], 15)
+        f = self.__add_mod__(f, v)
+
+        f = self.__add_mod__(f, u)
+
+        self.lfsr = self.lfsr[1:]
+        self.lfsr.append(f)
+        
+    def tick_gen(self):
+        f = self.lfsr[0]
+        v = self.__mul_by_sqr__(self.lfsr[0], 8)
+        f = self.__add_mod__(f, v)
+
+        v = self.__mul_by_sqr__(self.lfsr[4], 20)
+        f = self.__add_mod__(f, v)
+
+        v = self.__mul_by_sqr__(self.lfsr[10], 21)
+        f = self.__add_mod__(f, v)
+
+        v = self.__mul_by_sqr__(self.lfsr[13], 17)
+        f = self.__add_mod__(f, v)
+        
+        v = self.__mul_by_sqr__(self.lfsr[15], 15)
+        f = self.__add_mod__(f, v)
+
+        self.lfsr = self.lfsr[1:]
+        self.lfsr.append(f)
+        
+    def bit_reorganization(self):
+        self.br[0] = (((self.lfsr[15] & 0x7FFF8000) << 1)  | (self.lfsr[14] & 0xFFFF)) & 0xFFFFFFFF
+        self.br[1] = (((self.lfsr[11] & 0xFFFF)     << 16) | (self.lfsr[9] >> 15))     & 0xFFFFFFFF
+        self.br[2] = (((self.lfsr[7] & 0xFFFF)      << 16) | (self.lfsr[5] >> 15))     & 0xFFFFFFFF
+        self.br[3] = (((self.lfsr[2] & 0xFFFF)      << 16) | (self.lfsr[0] >> 15))     & 0xFFFFFFFF
+        
+    def linear1(self, x):
+        return (x ^^ self.__rotate__(x, 2) ^^ self.__rotate__(x, 10) ^^ self.__rotate__(x, 18) ^^ self.__rotate__(x, 24))
+
+    def linear2(self, x):
+        return (x ^^ self.__rotate__(x, 8) ^^ self.__rotate__(x, 14) ^^ self.__rotate__(x, 22) ^^ self.__rotate__(x, 30))
+
+    def fsm(self):
+        # output word
+        a = self.br[0] ^^ self.reg1
+        w = (a + self.reg2) & 0xffffffff
+        
+        self.fsm_r1 = self.reg1
+        self.fsm_r2 = self.reg2
+        self.fsm_out_x0 = a
+        self.fsm_out = w
+        self.fsm_in1 = self.br[1]
+        self.fsm_in2 = self.br[2]
+
+        # preliminary modulo addition and xor
+        w1 = (self.reg1 + self.br[1]) & 0xffffffff
+        w2 = self.reg2 ^^ self.br[2]
+        
+        self.fsm_add = w1
+        self.fsm_xor = w2
+        
+        # exchange half-words
+        left = ((w1 << 16) & 0xffff0000) | (w2 >> 16)
+        right = ((w2 << 16) & 0xffff0000) | (w1 >> 16)
+        
+        self.fsm_xch1 = left
+        self.fsm_xch2 = right
+        
+        # linear transformations
+        u = self.linear1(left)
+        v = self.linear2(right)
+        
+        self.fsm_l1 = u
+        self.fsm_l2 = v
+        
+        # sbox substitution
+        su = self.__word32__(self.s0[(u >> 24) & 0xff], self.s1[(u >> 16) & 0xff], self.s0[(u >> 8) & 0xff], self.s1[u & 0xff]) 
+        sv = self.__word32__(self.s0[(v >> 24) & 0xff], self.s1[(v >> 16) & 0xff], self.s0[(v >> 8) & 0xff], self.s1[v & 0xff]) 
+
+        # update FSM registers
+        self.reg1 = su
+        self.reg2 = sv
+        return w
+
+    def init(self):
+        # run cipher in initialization mode
+        self.reg1 = 0;
+        self.reg2 = 0;
+        for i in range(32):
+            # print 'tick', i
+            # print self
+            self.bit_reorganization()
+            w = self.fsm()
+            self.tick_init(w >> 1)
+
+    def gen(self, length):
+        self.bit_reorganization()
+        self.fsm()
+        self.tick_gen()
+        keystream = []
+        for i in range(length):
+            self.bit_reorganization();
+            keystream.append(self.fsm() ^^ self.br[3])
+            self.tick_gen()
+        return keystream
+        
+    def __repr__(self):
+        return 'ZUC Cipher'
+        
+    def __str__(self):
+        fmt = '%8.8X'
+        # output LFSR
+        state = '========================\n'
+        state += 'LFSR:\ts15\t' + fmt % (self.lfsr[15]) + '\n'
+        state += 'LFSR:\ts14\t' + fmt % (self.lfsr[14]) + '\n'
+        state += 'LFSR:\ts13\t' + fmt % (self.lfsr[13]) + '\n'
+        state += 'LFSR:\ts12\t' + fmt % (self.lfsr[12]) + '\n'
+        state += 'LFSR:\ts11\t' + fmt % (self.lfsr[11]) + '\n'
+        state += 'LFSR:\ts10\t' + fmt % (self.lfsr[10]) + '\n'
+        state += 'LFSR:\ts9\t' + fmt % (self.lfsr[9]) + '\n'
+        state += 'LFSR:\ts8\t' + fmt % (self.lfsr[8]) + '\n'
+        state += 'LFSR:\ts7\t' + fmt % (self.lfsr[7]) + '\n'
+        state += 'LFSR:\ts6\t' + fmt % (self.lfsr[6]) + '\n'
+        state += 'LFSR:\ts5\t' + fmt % (self.lfsr[5]) + '\n'
+        state += 'LFSR:\ts4\t' + fmt % (self.lfsr[4]) + '\n'
+        state += 'LFSR:\ts3\t' + fmt % (self.lfsr[3]) + '\n'
+        state += 'LFSR:\ts2\t' + fmt % (self.lfsr[2]) + '\n'
+        state += 'LFSR:\ts1\t' + fmt % (self.lfsr[1]) + '\n'
+        state += 'LFSR:\ts0\t' + fmt % (self.lfsr[0]) + '\n\n'
+        # output bit reorganization
+        state += 'BR:\tX0\t\tX1\t\tX2\t\tX3\n'
+        state += '\t' + fmt % (self.br[0]) + '\t' + fmt % (self.br[1]) +'\t'+ fmt % (self.br[2])+'\t'+ fmt % (self.br[3]) + '\n\n'
+        state += 'FSM:\tREG 1:  ' + fmt % (self.fsm_r1) + '\tREG 2:  ' + fmt % (self.fsm_r2) + '\n'
+        state += '\tOUT^X0: ' + fmt % (self.fsm_out_x0) + '\tOUT+R2: ' + fmt % (self.fsm_out) + '\n'
+        state += '\tIn X1:  ' + fmt % (self.fsm_in1) + '\tIn X2:  ' + fmt % (self.fsm_in2) + '\n'
+        state += '\tADD R1: ' + fmt % (self.fsm_add) + '\tXOR R2: ' + fmt % (self.fsm_xor) + '\n'
+        state += '\tEXCH L: ' + fmt % (self.fsm_xch1) + '\tEXCH R: ' + fmt % (self.fsm_xch2) + '\n'
+        state += '\tLIN L:  ' + fmt % (self.fsm_l1) + '\tLIN R:  ' + fmt % (self.fsm_l2) + '\n'
+        state += '\tSBOX L: ' + fmt % (self.reg1) + '\tSBOX R: ' + fmt % (self.reg2) + '\n\n'
+        state += 'KEYSTREAM WORD:\t' + fmt % (self.fsm_out ^^ self.br[3]) + '\n'
+        state += '========================'
+        return state
+
+# TESTING DATA
+
+key_set = [
+        [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], 
+        [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff], 
+        [0x3d, 0x4c, 0x4b, 0xe9, 0x6a, 0x82, 0xfd, 0xae, 0xb5, 0x8f, 0x64, 0x1d, 0xb1, 0x7b, 0x45, 0x5b]
+        ]
+
+iv_set = [
+        [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], 
+        [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff], 
+        [0x84, 0x31, 0x9a, 0xa8, 0xde, 0x69, 0x15, 0xca, 0x1f, 0x6b, 0xda, 0x6b, 0xfb, 0xd8, 0xc7, 0x66]
+        ]
+
+keystream_set = [
+        [0x27bede74, 0x018082da], 
+        [0x0657cfa0, 0x7096398b], 
+        [0x14f1c272, 0x3279c419]
+        ]
+
+lfsr_pre_init = [
+        [0x0044d700, 0x0026bc00, 0x00626b00, 0x00135e00, 0x00578900, 0x0035e200, 0x00713500, 0x0009af00, 0x004d7800, 0x002f1300, 0x006bc400, 0x001af100, 0x005e2600, 0x003c4d00, 0x00789a00, 0x0047ac00], 
+        [0x7fc4d7ff, 0x7fa6bcff, 0x7fe26bff, 0x7f935eff, 0x7fd789ff, 0x7fb5e2ff, 0x7ff135ff, 0x7f89afff, 0x7fcd78ff, 0x7faf13ff, 0x7febc4ff, 0x7f9af1ff, 0x7fde26ff, 0x7fbc4dff, 0x7ff89aff, 0x7fc7acff], 
+        [0x1ec4d784, 0x2626bc31, 0x25e26b9a, 0x74935ea8, 0x355789de, 0x4135e269, 0x7ef13515, 0x5709afca, 0x5acd781f, 0x47af136b, 0x326bc4da, 0x0e9af16b, 0x58de26fb, 0x3dbc4dd8, 0x22f89ac7, 0x2dc7ac66] 
+        ]
+
+lfsr_post_init =[
+        [0x7ce15b8b, 0x747ca0c4, 0x6259dd0b, 0x47a94c2b, 0x3a89c82e, 0x32b433fc, 0x231ea13f, 0x31711e42, 0x4ccce955, 0x3fb6071e, 0x161d3512, 0x7114b136, 0x5154d452, 0x78c69a74, 0x4f26ba6b, 0x3e1b8d6a], 
+        [0x09a339ad, 0x1291d190, 0x25554227, 0x36c09187, 0x0697773b, 0x443cf9cd, 0x6a4cd899, 0x49e34bd0, 0x56130b14, 0x20e8f24c, 0x7a5b1dcc, 0x0c3cc2d1, 0x1cc082c8, 0x7f5904a2, 0x55b61ce8, 0x1fe46106], 
+        [0x10da5941, 0x5b6acbf6, 0x17060ce1, 0x35368174, 0x5cf4385a, 0x479943df, 0x2753bab2, 0x73775d6a, 0x43930a37, 0x77b4af31, 0x15b2e89f, 0x24ff6e20, 0x740c40b9, 0x026a5503, 0x194b2a57, 0x7a9a1cff]
+        ]
+
+regs_post_init = [
+        [0x14cfd44c, 0x8c6de800], 
+        [0xb8017bd5, 0x9ce2de5c], 
+        [0x860a7dfa, 0xbf0e0ffc]
+        ]
+
+
+def selftest():
+    for i in range(len(key_set)):
+        test = Zuc(key_set[i], iv_set[i])
+        if test.lfsr == lfsr_pre_init[i]:
+            print 'Key expansion:\tPASSED'
+        else:
+            print 'FAILED key expansion'
+            
+        test.init()
+        
+        if test.lfsr == lfsr_post_init[i]:
+            print 'LFSR Init:\tPASSED'
+        else:
+            print 'FAILED LFSR Init'
+            
+        if test.reg1 == regs_post_init[i][0]:
+            print 'Register 1\tPASSED'
+        else:
+            print 'FAILED Register 1 assignment'
+            
+        if test.reg2 == regs_post_init[i][1]:
+            print 'Register 2\tPASSED'
+        else:
+            print 'FAILED Register 2 assignment'
+            
+        c = test.gen(2)
+        if c[0] == keystream_set[i][0] and c[1] == keystream_set[i][1]:
+            print 'Keystream gen:\tPASSED'
+        else:
+            print 'FAILED keystream generation'
+
